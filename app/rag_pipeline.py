@@ -14,11 +14,13 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Check CUDA availability
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using device: {device}")
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+# print(f"Using device: {device}")
 
 # Initialize embeddings, vector store and LLM
-embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2', model_kwargs={"device": device})
+embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2',
+                                   model_kwargs={"device": 'cpu'})
+
 vector_store = Chroma(embedding_function=embeddings,
                       persist_directory='../storage',
                       collection_name='rag_rl')
@@ -60,8 +62,10 @@ def retrieve(state: State):
 def generate(state: State):
     doc_content = "\n\n".join(doc.page_content for doc in state['context'])
     message = prompt.invoke(({'question': state['question'], 'context': doc_content}))
-    response = llm.invoke(message)
-    return {'answer': response.content}
+    # response = llm.invoke(message)
+    # return {'answer': response.content}
+    for chunk in llm.stream(message):
+        yield chunk.content
 
 
 # Build and compile graph
@@ -75,6 +79,3 @@ graph = graph_builder.compile()
 # Function to run the RAG pipeline
 def run_rag(question: str):
     return graph.invoke({"question": question, "context": [], "answer": ""})
-
-response = run_rag('what is reinforcement learning?')
-print(response['answer'])
