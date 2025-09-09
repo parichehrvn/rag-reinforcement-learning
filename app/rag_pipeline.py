@@ -40,7 +40,7 @@ llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", api_key=GOOGLE_API_KEY)
 # Define custom conversational prompt for reinforcement learning Q&A
 prompt_template = """
 You are an expert in reinforcement learning, acting as an instructor teaching a student. 
-Your task is to provide a detailed, step-by-step explanation of the answer, using the provided context from academic papers and blogs as the foundation. 
+Your task is to provide a very concise and short explanation of the answer, using the provided context from academic papers and blogs as the foundation. 
 Use a pedagogical tone to ensure the student understands the topic thoroughly. 
 If the context is insufficient or missing, acknowledge this and provide a general overview based on your expertise, noting the limitation.
 

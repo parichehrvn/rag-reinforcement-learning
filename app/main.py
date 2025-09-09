@@ -7,36 +7,39 @@ def get_response(question):
     return response
 
 
+
+
 st.title('Reinforcement Learning Q&A')
 
-# Input for user question
-question = st.text_input('Ask a question to learn Reinforcement Learning:', '')
+def home():
+    if "messages" not in st.session_state:
+        st.session_state['messages'] = []
 
-# Button to trigger query
-if st.button('Get Answer 🤖'):
+    # 1) Render chat history (always first)
+    for msg in st.session_state["messages"]:
+        avatar = "🧑" if msg["role"] == "User" else "🤖"
+        st.chat_message(msg["role"], avatar=avatar).markdown(msg["content"])
+
+    # 2) Input
+    question = st.chat_input("Ask a question to learn Reinforcement Learning:")
     if question:
-        placeholder = st.empty()
-        full_response = ""
+        # 3) Append & show user's message immediately
+        st.session_state["messages"].append({"role": "User", "content": question})
+        st.chat_message("User", avatar="🧑").markdown(f"**{question}**")
 
-        # Call the rag pipeline
-        for chunk in get_response(question):
-            full_response += chunk
-            placeholder.markdown(full_response)  # update progressively
+        # 4) Append placeholder assistant msg and stream chunks into it
+        with st.chat_message("Assistant", avatar="🤖"):
+            placeholder = st.empty()
+            st.session_state["messages"].append({"role": "Assistant", "content": ""})
+            idx = len(st.session_state["messages"]) - 1  # index of assistant placeholder
 
-    else:
-        st.error("Please enter a question.")
+            full_response = ""
+            for chunk in get_response(question):  # yields chunks
+                full_response += chunk
+                st.session_state["messages"][idx]["content"] = full_response  # persist partials
+                placeholder.markdown(full_response)
 
 
+with st.spinner('Fetching your data...⌛'):
+    home()
 
-# import streamlit as st
-#
-# st.title("RAG Chatbot")
-#
-# question = st.chat_input("Ask a question")
-# if question:
-#     with st.chat_message("user"):
-#         st.write(question)
-#
-#     with st.chat_message("assistant"):
-#         response_stream = generate({"question": question, "context": [...]})
-#         st.write_stream(response_stream)
