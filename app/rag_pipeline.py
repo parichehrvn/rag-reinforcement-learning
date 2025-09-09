@@ -1,17 +1,24 @@
+from typing import TypedDict, List, Iterator, Union
+from dotenv import load_dotenv
+import os
+import logging
+import torch
+
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-import torch
-from typing import TypedDict, List
-from dotenv import load_dotenv
-import os
-
 from langgraph.graph import StateGraph
 
+
 load_dotenv()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+if not GOOGLE_API_KEY:
+    logger.warning("GOOGLE_API_KEY not found in environment. Make sure to set it if you want to call the Google LLM.")
 
 # Check CUDA availability
 # device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -21,8 +28,11 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2',
                                    model_kwargs={"device": 'cpu'})
 
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+PERSIST_DIR = os.path.join(BASE_DIR, "storage")
+
 vector_store = Chroma(embedding_function=embeddings,
-                      persist_directory='../storage',
+                      persist_directory=PERSIST_DIR,
                       collection_name='rag_rl')
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", api_key=GOOGLE_API_KEY)
@@ -55,17 +65,32 @@ class State(TypedDict):
 
 # Define steps
 def retrieve(state: State):
-    retrieved_docs = vector_store.similarity_search(state['question'], k=5)
-    return {'context': retrieved_docs}
+    try:
+        retrieved_docs = vector_store.similarity_search(state["question"], k=5)
+        return {"context": retrieved_docs}
+    except Exception as e:
+        logger.error("Error during retrieval: %s", e)
+        return {"context": []}
 
 
 def generate(state: State):
-    doc_content = "\n\n".join(doc.page_content for doc in state['context'])
-    message = prompt.invoke(({'question': state['question'], 'context': doc_content}))
-    # response = llm.invoke(message)
-    # return {'answer': response.content}
-    for chunk in llm.stream(message):
-        yield chunk.content
+    try:
+        doc_content = "\n\n".join(doc.page_content for doc in state["context"])
+        message = prompt.invoke({"question": state["question"], "context": doc_content})
+
+        def stream_answer():
+            try:
+                for chunk in llm.stream(message):
+                    yield chunk.content
+            except Exception as e:
+                logger.error("Error during streaming: %s", e)
+                yield f"[Error generating response: {e}]"
+
+        return {"answer": stream_answer()}
+
+    except Exception as e:
+        logger.error("Error preparing generation: %s", e)
+        return {"answer": iter([f"[Error preparing generation: {e}]"])}
 
 
 # Build and compile graph
@@ -78,4 +103,6 @@ graph = graph_builder.compile()
 
 # Function to run the RAG pipeline
 def run_rag(question: str):
-    return graph.invoke({"question": question, "context": [], "answer": ""})
+    # Run the RAG pipeline and stream the answer.
+    state = graph.invoke({"question": question, "context": [], "answer": None})
+    return state["answer"] if state["answer"] else iter(["[No answer generated]"])

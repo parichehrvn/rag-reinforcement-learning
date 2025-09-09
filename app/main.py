@@ -2,7 +2,6 @@ import streamlit as st
 from rag_pipeline import run_rag
 
 
-@st.cache_data
 def get_response(question):
     response = run_rag(question)
     return response
