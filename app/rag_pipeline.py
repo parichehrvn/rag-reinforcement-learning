@@ -112,7 +112,7 @@ memory = MemorySaver()
 
 graph_builder = StateGraph(MessagesState)
 graph_builder.add_node(query_or_respond)
-graph_builder.add_node(tool)
+graph_builder.add_node(tools)
 graph_builder.add_node(generate)
 
 graph_builder.set_entry_point("query_or_respond")
@@ -123,7 +123,7 @@ graph_builder.add_conditional_edges(
 )
 
 graph_builder.add_edge("tools", "generate")
-graph_builder.add_edge("generate", "END")
+graph_builder.add_edge("generate", END)
 graph = graph_builder.compile(checkpointer=memory)
 
 # Function to run the RAG pipeline
@@ -148,8 +148,28 @@ def run_rag(question: str, thread_id: str = "default_thread"):
             "configurable": {"thread_id": thread_id}
         }
 
-        state = graph.invoke(input_state, config=config)
+        for step in graph.stream(
+                {"messages": [{"role": "user", "content": question}]},
+                stream_mode="values",
+                config=config,
+        ):
+            if step["messages"][-1].type == "ai" and not step["messages"][-1].tool_calls:
+                return step["messages"][-1].content
+
+        # state = graph.invoke(input_state, config=config)
 
     except Exception as e:
         logger.error("Error running RAG pipeline: %s", e)
         return iter([f"[Error running RAG pipeline: {e}]"])
+
+# Example usage
+# question = "What is Q-learning in reinforcement learning?"
+# response = run_rag(question, thread_id="conversation_1")
+# print("########################response1##########################")
+# print(response)
+#
+# # Follow-up question in the same thread to leverage memory
+# follow_up = "Can you explain the difference between Q-learning and SARSA?"
+# response = run_rag(follow_up, thread_id="conversation_1")
+# print("########################response2##########################")
+# print(response)
