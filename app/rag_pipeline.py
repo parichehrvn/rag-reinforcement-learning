@@ -1,4 +1,3 @@
-from typing import TypedDict, List, Iterator, Union
 from dotenv import load_dotenv
 import os
 import logging
@@ -6,10 +5,13 @@ import torch
 
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate
 from langchain_chroma import Chroma
-from langchain_core.documents import Document
-from langgraph.graph import StateGraph
+from langchain_core.tools import tool
+from langchain_core.messages import SystemMessage, HumanMessage
+from langgraph.graph import MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.graph import END
+from langgraph.checkpoint.memory import MemorySaver
 
 
 load_dotenv()
@@ -37,56 +39,68 @@ vector_store = Chroma(embedding_function=embeddings,
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", api_key=GOOGLE_API_KEY)
 
-# Define custom conversational prompt for reinforcement learning Q&A
-prompt_template = """
-You are an expert in reinforcement learning, acting as an instructor teaching a student. 
-Your task is to provide a very concise and short explanation of the answer, using the provided context from academic papers and blogs as the foundation. 
-Use a pedagogical tone to ensure the student understands the topic thoroughly. 
-If the context is insufficient or missing, acknowledge this and provide a general overview based on your expertise, noting the limitation.
 
-Question: {question}
-Context: {context}
-Answer:
-"""
-prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", prompt_template),
-        ("human", "{question}"),
-    ]
-)
-
-
-# Define state
-class State(TypedDict):
-    question: str
-    context: List[Document]
-    answer: str
-
-
-# Define steps
-def retrieve(state: State):
+# Define tools
+@tool(response_format='content_and_artifact')
+def retrieve(query: str):
+    """Retrieve information related to a query"""
     try:
-        retrieved_docs = vector_store.similarity_search(state["question"], k=5)
-        return {"context": retrieved_docs}
+        retrieved_docs = vector_store.similarity_search(query, k=5)
+        serialized = "\n\n".join(
+            f"Source: {doc.metadata} \nContent: {doc.page_content}"
+            for doc in retrieved_docs
+        )
+        return serialized, retrieved_docs
     except Exception as e:
         logger.error("Error during retrieval: %s", e)
         return {"context": []}
 
 
-def generate(state: State):
+# Step1: Generate an AIMessage that may include a tool-call to be sent
+def query_or_respond(state: MessagesState):
+    """Generate tool call for retrieval or respond"""
+    llm_with_tools = llm.bind_tools(([retrieve]))
+    response = llm_with_tools.invoke(state["messages"])
+    return {"messages": response}
+
+
+# Step 2: Execute the retrieval
+tools = ToolNode([retrieve])
+
+
+# Step 3: Generate a response using the retrieved content
+def generate(state: MessagesState):
+    """Generate final answer"""
     try:
-        doc_content = "\n\n".join(doc.page_content for doc in state["context"])
-        message = prompt.invoke({"question": state["question"], "context": doc_content})
+        recent_tool_messages = []
+        for message in reversed(state["messages"]):
+            if message.type == "tool":
+                recent_tool_messages.append(message)
+            else:
+                break
 
-        def stream_answer():
-            try:
-                for chunk in llm.stream(message):
-                    yield chunk.content
-            except Exception as e:
-                logger.error("Error during streaming: %s", e)
-                yield f"[Error generating response: {e}]"
+        tool_messages = recent_tool_messages[::-1]
 
-        return {"answer": stream_answer()}
+        doc_content = "\n\n".join(doc.content for doc in tool_messages)
+
+        system_message_content = f""" 
+    You are an expert in reinforcement learning, acting as an instructor teaching a student. 
+    Your task is to provide a very concise and short explanation of the answer, using the provided retrieved context from academic papers and blogs as the foundation. 
+    Use a pedagogical tone to ensure the student understands the topic thoroughly. 
+    If the context is insufficient or missing, acknowledge this and provide a general overview based on your expertise, noting the limitation.
+    {doc_content}
+    """
+        conversation_messages = [
+            message
+            for message in state["messages"]
+            if message.type in ("human", "system")
+            or (message.type == "ai" and not message.tool_calls)
+        ]
+        prompt = [SystemMessage(system_message_content)] + conversation_messages
+
+        # Without streaming:
+        response = llm.invoke(prompt)
+        return {"messages": response}
 
     except Exception as e:
         logger.error("Error preparing generation: %s", e)
@@ -94,15 +108,48 @@ def generate(state: State):
 
 
 # Build and compile graph
-graph_builder = StateGraph(State)
-graph_builder.add_node('retrieve', retrieve)
-graph_builder.add_node('generate', generate)
-graph_builder.add_edge('retrieve', 'generate')
-graph_builder.set_entry_point('retrieve')
-graph = graph_builder.compile()
+memory = MemorySaver()
+
+graph_builder = StateGraph(MessagesState)
+graph_builder.add_node(query_or_respond)
+graph_builder.add_node(tool)
+graph_builder.add_node(generate)
+
+graph_builder.set_entry_point("query_or_respond")
+graph_builder.add_conditional_edges(
+    "query_or_respond",
+    tools_condition,
+    {END: END, "tools": "tools"}
+)
+
+graph_builder.add_edge("tools", "generate")
+graph_builder.add_edge("generate", "END")
+graph = graph_builder.compile(checkpointer=memory)
 
 # Function to run the RAG pipeline
-def run_rag(question: str):
-    # Run the RAG pipeline and stream the answer.
-    state = graph.invoke({"question": question, "context": [], "answer": None})
-    return state["answer"] if state["answer"] else iter(["[No answer generated]"])
+def run_rag(question: str, thread_id: str = "default_thread"):
+    """
+    Run the RAG pipeline with memory support and return the streamed answer.
+
+    Args:
+        question (str): The user's question.
+        thread_id (str): Identifier for the conversation thread to maintain memory.
+
+    Returns:
+        Iterator[str]: Streamed response from the LLM.
+    """
+    try:
+        # Initialize the input state with the user's question as a HumanMessage
+        input_state = {
+            "messages": [HumanMessage(content=question)]
+        }
+
+        config = {
+            "configurable": {"thread_id": thread_id}
+        }
+
+        state = graph.invoke(input_state, config=config)
+
+    except Exception as e:
+        logger.error("Error running RAG pipeline: %s", e)
+        return iter([f"[Error running RAG pipeline: {e}]"])
