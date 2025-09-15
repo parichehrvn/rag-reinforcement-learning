@@ -148,13 +148,13 @@ def run_rag(question: str, thread_id: str = "default_thread"):
             "configurable": {"thread_id": thread_id}
         }
 
-        for step in graph.stream(
+        for message_chunk, metadata in graph.stream(
                 {"messages": [{"role": "user", "content": question}]},
-                stream_mode="values",
+                stream_mode="messages",
                 config=config,
         ):
-            if step["messages"][-1].type == "ai" and not step["messages"][-1].tool_calls:
-                return step["messages"][-1].content
+            if message_chunk.content and metadata['langgraph_node'] == 'generate' :
+                yield message_chunk.content
 
         # state = graph.invoke(input_state, config=config)
 
@@ -165,11 +165,4 @@ def run_rag(question: str, thread_id: str = "default_thread"):
 # Example usage
 # question = "What is Q-learning in reinforcement learning?"
 # response = run_rag(question, thread_id="conversation_1")
-# print("########################response1##########################")
-# print(response)
-#
-# # Follow-up question in the same thread to leverage memory
-# follow_up = "Can you explain the difference between Q-learning and SARSA?"
-# response = run_rag(follow_up, thread_id="conversation_1")
-# print("########################response2##########################")
-# print(response)
+
