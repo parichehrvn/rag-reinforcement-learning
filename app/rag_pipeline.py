@@ -12,7 +12,10 @@ from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph import END
 from langgraph.checkpoint.memory import MemorySaver
+from langchain.globals import set_llm_cache
+from langchain_community.cache import InMemoryCache
 
+set_llm_cache(InMemoryCache())
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
