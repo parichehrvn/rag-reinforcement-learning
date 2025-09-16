@@ -2,6 +2,7 @@
 A conversational **Retrieval-Augmented Generation (RAG)** chatbot that acts as an instructor for **Reinforcement Learning**.  
 It maintains **conversation memory**, so you can ask follow-up questions naturally.
 Built with [LangChain](https://github.com/langchain-ai/langchain), [LangGraph](https://github.com/langchain-ai/langgraph), [HuggingFace embeddings](https://huggingface.co/), [ChromaDB](https://www.trychroma.com/), and [Streamlit](https://streamlit.io/).
+
 Deployed on [Streamlit Cloud](https://rag-reinforcement-learning.streamlit.app/) for interactive use.
 
 ---
