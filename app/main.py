@@ -59,11 +59,11 @@ def home():
 
             full_response = ""
 
-            # with st.spinner('Thinking...⌛'):
-            for chunk in get_response(question):  # yields chunks
-                full_response += chunk
-                st.session_state["messages"][idx]["content"] = full_response  # persist partials
-                placeholder.markdown(full_response)
+            with st.spinner('Thinking...⌛'):
+                for chunk in get_response(question):  # yields chunks
+                    full_response += chunk
+                    st.session_state["messages"][idx]["content"] = full_response  # persist partials
+                    placeholder.markdown(full_response)
 
 
 home()

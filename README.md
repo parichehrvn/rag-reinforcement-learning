@@ -4,6 +4,8 @@ It maintains **conversation memory**, so you can ask follow-up questions natural
 Built with [LangChain](https://github.com/langchain-ai/langchain), [LangGraph](https://github.com/langchain-ai/langgraph), [HuggingFace embeddings](https://huggingface.co/), [ChromaDB](https://www.trychroma.com/), and [Streamlit](https://streamlit.io/).
 
 ---
+![image](data/demo/demo.png)
+---
 ## Table of Contents
 - [Features](#introduction)
 - [Tech Stack](...)
