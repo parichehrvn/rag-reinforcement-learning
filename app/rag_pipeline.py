@@ -1,3 +1,6 @@
+import sys
+import pysqlite3
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')  # Patch sqlite3 module
 import logging
 import os
 
@@ -7,14 +10,14 @@ from langchain.globals import set_llm_cache
 from langchain_chroma import Chroma
 from langchain_community.cache import InMemoryCache
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage
 from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-# set_llm_cache(InMemoryCache())
+set_llm_cache(InMemoryCache())
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -162,12 +165,12 @@ def run_rag(question: str, thread_id: str = "default_thread"):
 
 
 # Example usage
-# question = "What is Q-learning in reinforcement learning?"
-# response = run_rag(question, thread_id="conversation_1")
-# for chunk in response:
-#     print(chunk)
-# print("#"* 50)
-# question = "explain it more"
-# response = run_rag(question, thread_id="conversation_1")
-# for chunk in response:
-#     print(chunk)
+question = "What is Q-learning in reinforcement learning?"
+response = run_rag(question, thread_id="conversation_1")
+for chunk in response:
+    print(chunk)
+print("#"* 50)
+question = "explain it more"
+response = run_rag(question, thread_id="conversation_1")
+for chunk in response:
+    print(chunk)
