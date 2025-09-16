@@ -5,7 +5,7 @@ Built with [LangChain](https://github.com/langchain-ai/langchain), [LangGraph](h
 Deployed on [Streamlit Cloud](https://rag-reinforcement-learning.streamlit.app/) for interactive use.
 
 ---
-![image](data/demo/demo.png)
+![image](demo/demo.png)
 ---
 ## Table of Contents
 - [Features](#introduction)
