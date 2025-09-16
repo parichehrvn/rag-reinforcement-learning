@@ -1,21 +1,20 @@
-from dotenv import load_dotenv
-import os
 import logging
+import os
+
 import torch
-
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_chroma import Chroma
-from langchain_core.tools import tool
-from langchain_core.messages import SystemMessage, HumanMessage
-from langgraph.graph import MessagesState, StateGraph
-from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.graph import END
-from langgraph.checkpoint.memory import MemorySaver
+from dotenv import load_dotenv
 from langchain.globals import set_llm_cache
+from langchain_chroma import Chroma
 from langchain_community.cache import InMemoryCache
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.tools import tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode, tools_condition
 
-set_llm_cache(InMemoryCache())
+# set_llm_cache(InMemoryCache())
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -26,12 +25,12 @@ if not GOOGLE_API_KEY:
     logger.warning("GOOGLE_API_KEY not found in environment. Make sure to set it if you want to call the Google LLM.")
 
 # Check CUDA availability
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-# print(f"Using device: {device}")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using device: {device}")
 
 # Initialize embeddings, vector store and LLM
 embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2',
-                                   model_kwargs={"device": 'cpu'})
+                                   model_kwargs={"device": device})
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 PERSIST_DIR = os.path.join(BASE_DIR, "storage")
@@ -64,6 +63,7 @@ def query_or_respond(state: MessagesState):
     """Generate tool call for retrieval or respond"""
     llm_with_tools = llm.bind_tools(([retrieve]))
     response = llm_with_tools.invoke(state["messages"])
+
     return {"messages": response}
 
 
@@ -88,21 +88,23 @@ def generate(state: MessagesState):
 
         system_message_content = f""" 
     You are an expert in reinforcement learning, acting as an instructor teaching a student. 
-    Your task is to provide a very concise and short explanation of the answer, using the provided retrieved context from academic papers and blogs as the foundation. 
-    Use a pedagogical tone to ensure the student understands the topic thoroughly. 
+    Your task is to provide a extremely concise and short explanation of the answer, using the provided retrieved context from academic papers and blogs as the foundation. 
+    Do not mention source.
     If the context is insufficient or missing, acknowledge this and provide a general overview based on your expertise, noting the limitation.
     {doc_content}
     """
+
         conversation_messages = [
             message
             for message in state["messages"]
             if message.type in ("human", "system")
             or (message.type == "ai" and not message.tool_calls)
         ]
+
         prompt = [SystemMessage(system_message_content)] + conversation_messages
 
-        # Without streaming:
         response = llm.invoke(prompt)
+
         return {"messages": response}
 
     except Exception as e:
@@ -142,11 +144,6 @@ def run_rag(question: str, thread_id: str = "default_thread"):
         Iterator[str]: Streamed response from the LLM.
     """
     try:
-        # Initialize the input state with the user's question as a HumanMessage
-        input_state = {
-            "messages": [HumanMessage(content=question)]
-        }
-
         config = {
             "configurable": {"thread_id": thread_id}
         }
@@ -156,16 +153,21 @@ def run_rag(question: str, thread_id: str = "default_thread"):
                 stream_mode="messages",
                 config=config,
         ):
-            if message_chunk.content and metadata['langgraph_node'] == 'generate' :
+            if message_chunk.content and metadata["langgraph_node"] != "tools":
                 yield message_chunk.content
-
-        # state = graph.invoke(input_state, config=config)
 
     except Exception as e:
         logger.error("Error running RAG pipeline: %s", e)
         return iter([f"[Error running RAG pipeline: {e}]"])
 
+
 # Example usage
 # question = "What is Q-learning in reinforcement learning?"
 # response = run_rag(question, thread_id="conversation_1")
-
+# for chunk in response:
+#     print(chunk)
+# print("#"* 50)
+# question = "explain it more"
+# response = run_rag(question, thread_id="conversation_1")
+# for chunk in response:
+#     print(chunk)

@@ -1,4 +1,5 @@
 import streamlit as st
+
 from rag_pipeline import run_rag
 
 
@@ -7,10 +8,14 @@ def get_response(question):
     return response
 
 
+st.set_page_config(page_title="Reinforcement Learning Q&A",
+                   page_icon="🤖",
+                   layout="centered")
+
 def home():
-    st.set_page_config(page_title="Reinforcement Learning Q&A",
-                       page_icon="🤖",
-                       layout="centered")
+    # st.set_page_config(page_title="Reinforcement Learning Q&A",
+    #                    page_icon="🤖",
+    #                    layout="centered")
 
     if "messages" not in st.session_state:
         st.session_state["messages"] = []
@@ -36,7 +41,7 @@ def home():
     chat_container = st.container()
     with chat_container:
         for msg in st.session_state["messages"]:
-            avatar = "🧑" if msg["role"] == "User" else "🤖"
+            avatar = "🧑" if msg["role"] == "user" else "🤖"
             st.chat_message(msg["role"], avatar=avatar).markdown(msg["content"])
 
     # 2) Input
@@ -53,12 +58,13 @@ def home():
             idx = len(st.session_state["messages"]) - 1  # index of assistant placeholder
 
             full_response = ""
+
+            # with st.spinner('Thinking...⌛'):
             for chunk in get_response(question):  # yields chunks
                 full_response += chunk
                 st.session_state["messages"][idx]["content"] = full_response  # persist partials
                 placeholder.markdown(full_response)
 
 
-with st.spinner('Fetching your data...⌛'):
-    home()
+home()
 
